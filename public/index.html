@@ -39,9 +39,9 @@
                 <div class="header-status">Sharing as <span id="sender-name">...</span></div>
             </header>
 
-            <div class="code-display-box" id="send-code-container">
+            <div class="code-display-box" id="send-code-container" style="display: none;">
                 <p>One-Time Code</p>
-                <h1 id="sender-code" class="glow-text">------</h1>
+                <h1 id="sender-code" class="glow-text">--------</h1>
                 <p class="subtitle">Enter this code on the receiving device</p>
             </div>
 
@@ -55,12 +55,6 @@
                 <label for="file-input" class="btn btn-primary" style="cursor: pointer;">Browse</label>
             </div>
 
-            <div class="nodes-list-container">
-                <h3><i class="ri-radar-line"></i> Available Receivers</h3>
-                <div class="nodes-list" id="available-receivers">
-                    <div class="empty-state">Scanning local network...</div>
-                </div>
-            </div>
 
             <!-- Transfer Progress -->
             <div class="transfer-box" id="send-transfer-box" style="display: none;">
@@ -81,9 +75,11 @@
             </header>
 
             <div class="code-entry-box">
-                <p>Enter Sender's 6-Digit Code</p>
+                <p>Enter Sender's 8-Digit Code</p>
                 <div class="code-inputs" id="code-inputs">
                     <input type="text" maxlength="1" class="code-digit" autofocus>
+                    <input type="text" maxlength="1" class="code-digit">
+                    <input type="text" maxlength="1" class="code-digit">
                     <input type="text" maxlength="1" class="code-digit">
                     <input type="text" maxlength="1" class="code-digit">
                     <input type="text" maxlength="1" class="code-digit">
@@ -94,12 +90,6 @@
                 <p class="error-text" id="code-error"></p>
             </div>
 
-            <div class="nodes-list-container" style="margin-bottom: 20px;">
-                <h3><i class="ri-radar-line"></i> Available Senders</h3>
-                <div class="nodes-list" id="available-senders">
-                    <div class="empty-state">Scanning local network...</div>
-                </div>
-            </div>
 
             <!-- Transfer Progress -->
             <div class="transfer-box" id="receive-transfer-box" style="display: none;">

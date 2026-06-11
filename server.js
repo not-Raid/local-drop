@@ -11,7 +11,7 @@ app.use(express.static('public'));
 
 const port = process.env.PORT || 3000;
 
-// Store active users: socket.id -> { id, name, mode, code? }
+// Store active users: socket.id -> { id, name, mode, code?, pairedWith? }
 const activeNodes = new Map();
 
 io.on('connection', (socket) => {
@@ -19,27 +19,22 @@ io.on('connection', (socket) => {
 
     // Initial node registration
     socket.on('register-node', ({ mode, name }) => {
-        let nodeData = { mode, name, id: socket.id };
-        
-        // If Send mode, generate a unique 6-digit code for receivers to connect
-        if (mode === 'send') {
-            const code = Math.floor(100000 + Math.random() * 900000).toString();
-            nodeData.code = code;
-        }
-        
+        let nodeData = { mode, name, id: socket.id, pairedWith: null };
         activeNodes.set(socket.id, nodeData);
-        console.log(`Node registered: [${mode}] ${name} - ID: ${socket.id} Code: ${nodeData.code || 'N/A'}`);
-
-        // Confirm registration to client
+        console.log(`Node registered: [${mode}] ${name} - ID: ${socket.id}`);
         socket.emit('node-registered', nodeData);
-        broadcastNodes();
     });
 
-    // Helper to broadcast list of all nodes to everyone for discovery
-    const broadcastNodes = () => {
-        const nodes = Array.from(activeNodes.values());
-        io.emit('nodes-update', nodes);
-    };
+    // Sender requests a code after files are selected
+    socket.on('ready-to-send', () => {
+        const nodeData = activeNodes.get(socket.id);
+        if (nodeData && nodeData.mode === 'send') {
+            const code = Math.floor(10000000 + Math.random() * 90000000).toString();
+            nodeData.code = code;
+            console.log(`[Send Ready] ID: ${socket.id} generated 8-digit Code: ${code}`);
+            socket.emit('code-generated', code);
+        }
+    });
 
     // Receiver entering a one-time code to connect to a sender
     socket.on('connect-via-code', (code) => {
@@ -47,10 +42,16 @@ io.on('connection', (socket) => {
         
         if (sender) {
             console.log(`[Code] Client ${socket.id} connecting to Sender ${sender.id}`);
+            
+            // Pair them up
+            const receiverNode = activeNodes.get(socket.id);
+            if (receiverNode) receiverNode.pairedWith = sender.id;
+            sender.pairedWith = socket.id;
+
             // Tell the sender that a receiver is trying to connect
             io.to(sender.id).emit('incoming-connection', {
                 from: socket.id,
-                name: activeNodes.get(socket.id)?.name || 'Unknown'
+                name: receiverNode?.name || 'Unknown'
             });
             // Tell the receiver the connection was successful
             socket.emit('code-success', sender.id);
@@ -58,15 +59,6 @@ io.on('connection', (socket) => {
             console.log(`[Code Error] Client ${socket.id} provided invalid code: ${code}`);
             socket.emit('code-error', 'Invalid or expired code.');
         }
-    });
-
-    // Sender explicitly clicking a receiver from the discovery list
-    socket.on('connect-to-node', (targetId) => {
-        console.log(`[Discovery] Sender ${socket.id} connecting to Receiver ${targetId}`);
-        io.to(targetId).emit('incoming-connection', {
-            from: socket.id,
-            name: activeNodes.get(socket.id)?.name || 'Unknown'
-        });
     });
 
     // ============================================
@@ -87,8 +79,17 @@ io.on('connection', (socket) => {
     // Disconnect cleanup
     socket.on('disconnect', () => {
         console.log('[-] Client disconnected:', socket.id);
+        const node = activeNodes.get(socket.id);
+        
+        if (node && node.pairedWith) {
+            console.log(`[Disconnect] Notifying paired peer ${node.pairedWith}`);
+            io.to(node.pairedWith).emit('peer-disconnected');
+            
+            const peer = activeNodes.get(node.pairedWith);
+            if (peer) peer.pairedWith = null; // Unpair the remaining peer
+        }
+        
         activeNodes.delete(socket.id);
-        broadcastNodes();
     });
 });
 

@@ -59,53 +59,18 @@ const app = {
 // =====================================
 
 socket.on('node-registered', (data) => {
-    if (data.mode === 'send') {
-        appState.code = data.code;
-        sendCodeEl.innerText = data.code.split('').join(' ');
-    }
+    console.log("Registered as:", data.mode);
 });
 
-// Update the list of available computers/devices for discovery
-socket.on('nodes-update', (nodes) => {
-    // For Send Mode: Show Receivers
-    if (appState.mode === 'send') {
-        const receivers = nodes.filter(n => n.mode === 'receive' && n.id !== socket.id);
-        availableReceiversEl.innerHTML = '';
-        if (receivers.length === 0) {
-            availableReceiversEl.innerHTML = '<div class="empty-state">No receivers found...</div>';
-        } else {
-            receivers.forEach(r => {
-                const div = document.createElement('div');
-                div.className = 'node-item';
-                div.innerHTML = `<i class="ri-smartphone-line node-icon"></i> <div><strong>${r.name}</strong><br><small>Ready to receive</small></div>`;
-                div.onclick = () => {
-                    socket.emit('connect-to-node', r.id);
-                    appState.targetId = r.id;
-                    startSending();
-                };
-                availableReceiversEl.appendChild(div);
-            });
-        }
-    }
-    
-    // For Receive Mode: Show Senders
-    if (appState.mode === 'receive') {
-        const senders = nodes.filter(n => n.mode === 'send' && n.id !== socket.id);
-        availableSendersEl.innerHTML = '';
-        if (senders.length === 0) {
-            availableSendersEl.innerHTML = '<div class="empty-state">Scanning local network...</div>';
-        } else {
-            senders.forEach(s => {
-                const div = document.createElement('div');
-                div.className = 'node-item';
-                div.innerHTML = `<i class="ri-upload-cloud-2-line node-icon"></i> <div><strong>${s.name}</strong><br><small>Code: ${s.code}</small></div>`;
-                div.onclick = () => {
-                    socket.emit('connect-via-code', s.code);
-                };
-                availableSendersEl.appendChild(div);
-            });
-        }
-    }
+socket.on('code-generated', (code) => {
+    appState.code = code;
+    sendCodeEl.innerText = code.split('').join(' ');
+    document.getElementById('send-code-container').style.display = 'block';
+});
+
+socket.on('peer-disconnected', () => {
+    alert("Connection lost. The other device disconnected.");
+    window.location.reload();
 });
 
 // Receiver attempted to connect via code
@@ -149,10 +114,10 @@ codeInputs.forEach((input, index) => {
 // Connect Code Button
 document.getElementById('connect-code-btn').onclick = () => {
     const code = Array.from(codeInputs).map(i => i.value).join('');
-    if (code.length === 6) {
+    if (code.length === 8) {
         socket.emit('connect-via-code', code);
     } else {
-        document.getElementById('code-error').innerText = "Enter the 6-digit code";
+        document.getElementById('code-error').innerText = "Enter the 8-digit code";
     }
 };
 
@@ -160,6 +125,11 @@ document.getElementById('connect-code-btn').onclick = () => {
 fileInput.addEventListener('change', (e) => {
     appState.files = Array.from(e.target.files);
     fileCountLabel.innerText = `${appState.files.length} file(s) selected`;
+    
+    // Once files are selected, tell server we are ready to send and get a code
+    if (appState.files.length > 0) {
+        socket.emit('ready-to-send');
+    }
 });
 
 // =====================================
@@ -195,35 +165,65 @@ function sendNextFile() {
     });
 }
 
+// Math formula variables
+let mathVars = null;
+let currentKey = null;
+
+function generateMathVars() {
+    const rand = () => Math.floor(Math.random() * 9000) + 1000;
+    mathVars = { a: rand(), b: rand(), c: rand(), d: rand(), e: rand(), f: rand() };
+    currentKey = calculateEncryptionKey(mathVars);
+}
+
+function calculateEncryptionKey({a, b, c, d, e, f}) {
+    let N = (((a * c) % d) << 4) ^ (b * e) + (Math.pow(f, 2) % a);
+    return Math.abs(N);
+}
+
+function encryptDecryptChunk(arrayBuffer, key, chunkIndex) {
+    const view = new Uint8Array(arrayBuffer);
+    let k = key + chunkIndex;
+    for (let i = 0; i < view.length; i++) {
+        view[i] ^= (k & 0xFF);
+        k = (k * 16807) % 2147483647;
+    }
+    return arrayBuffer;
+}
+
 function sendFile(file) {
     return new Promise((resolve) => {
-        // 1. Send File Meta
+        generateMathVars();
+
+        // 1. Send File Meta with Math variables
         socket.emit('file-meta', {
             target: appState.targetId,
-            meta: { name: file.name, size: file.size, type: file.type }
+            meta: { name: file.name, size: file.size, type: file.type, mathVars: mathVars }
         });
 
         // 2. Read and Send Chunks
         let offset = 0;
+        let chunkIndex = 0;
         const reader = new FileReader();
 
         reader.onload = async (e) => {
+            // Encrypt the chunk before sending
+            const encryptedBuffer = encryptDecryptChunk(e.target.result, currentKey, chunkIndex);
+
             socket.emit('file-chunk', {
                 target: appState.targetId,
-                chunk: e.target.result
+                chunk: encryptedBuffer
             });
             
-            offset += e.target.result.byteLength;
+            offset += encryptedBuffer.byteLength;
+            chunkIndex++;
             const percent = Math.floor((offset / file.size) * 100);
             sendProgress.style.width = `${percent}%`;
             sendProgressText.innerText = `${percent}%`;
 
             if (offset < file.size) {
-                // Yield to the main thread to prevent UI freezing and allow the progress bar to animate smoothly
                 await new Promise(r => setTimeout(r, 0));
                 readNextChunk();
             } else {
-                // Done
                 socket.emit('transfer-complete', { target: appState.targetId });
                 resolve();
             }
@@ -242,11 +242,18 @@ function sendFile(file) {
 let receiveBuffer = [];
 let incomingMeta = null;
 let bytesReceived = 0;
+let receiveKey = null;
+let receiveChunkIndex = 0;
 
 socket.on('file-meta', (data) => {
     incomingMeta = data.meta;
     receiveBuffer = [];
     bytesReceived = 0;
+    receiveChunkIndex = 0;
+    
+    // Calculate decryption key using the math variables from sender
+    receiveKey = calculateEncryptionKey(incomingMeta.mathVars);
+
     receiveTransferBox.style.display = 'block';
     currentFileName.innerText = `Receiving: ${incomingMeta.name}`;
     receiveProgress.style.width = "0%";
@@ -254,8 +261,12 @@ socket.on('file-meta', (data) => {
 });
 
 socket.on('file-chunk', (data) => {
-    receiveBuffer.push(data.chunk);
-    bytesReceived += data.chunk.byteLength;
+    // Decrypt the chunk
+    const decryptedBuffer = encryptDecryptChunk(data.chunk, receiveKey, receiveChunkIndex);
+    receiveChunkIndex++;
+
+    receiveBuffer.push(decryptedBuffer);
+    bytesReceived += decryptedBuffer.byteLength;
     
     if (incomingMeta) {
         const percent = Math.floor((bytesReceived / incomingMeta.size) * 100);
