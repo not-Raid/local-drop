@@ -73,6 +73,19 @@ socket.on('peer-disconnected', () => {
     window.location.reload();
 });
 
+socket.on('transfer-cancelled', () => {
+    alert("Transfer was cancelled by the other device.");
+    window.location.reload();
+});
+
+// Cancel Transfer Button Logic
+function cancelTransfer() {
+    if (confirm("Are you sure you want to cancel this transfer?")) {
+        socket.emit('cancel-transfer');
+        window.location.reload();
+    }
+}
+
 // Receiver attempted to connect via code
 socket.on('code-success', (senderId) => {
     appState.targetId = senderId;

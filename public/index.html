@@ -58,7 +58,10 @@
 
             <!-- Transfer Progress -->
             <div class="transfer-box" id="send-transfer-box" style="display: none;">
-                <h3>Sending to <span id="send-target-name">Receiver</span></h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin: 0;">Sending to <span id="send-target-name">Receiver</span></h3>
+                    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 8px;" onclick="cancelTransfer()"><i class="ri-close-circle-line"></i> Cancel</button>
+                </div>
                 <div class="progress-container">
                     <div class="progress-bar" id="send-progress"></div>
                 </div>
@@ -93,7 +96,10 @@
 
             <!-- Transfer Progress -->
             <div class="transfer-box" id="receive-transfer-box" style="display: none;">
-                <h3>Receiving from <span id="receive-target-name">Sender</span></h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin: 0;">Receiving from <span id="receive-target-name">Sender</span></h3>
+                    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 8px;" onclick="cancelTransfer()"><i class="ri-close-circle-line"></i> Cancel</button>
+                </div>
                 <p id="current-file-name" style="margin-bottom: 15px; font-size: 0.9rem; color: #a29bfe;">Waiting for files...</p>
                 <div class="progress-container">
                     <div class="progress-bar" id="receive-progress"></div>

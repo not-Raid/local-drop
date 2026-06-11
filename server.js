@@ -76,6 +76,18 @@ io.on('connection', (socket) => {
         io.to(target).emit('transfer-complete', { sender: socket.id });
     });
 
+    socket.on('cancel-transfer', () => {
+        const node = activeNodes.get(socket.id);
+        if (node && node.pairedWith) {
+            console.log(`[Cancel] Client ${socket.id} cancelled transfer with ${node.pairedWith}`);
+            io.to(node.pairedWith).emit('transfer-cancelled');
+            
+            const peer = activeNodes.get(node.pairedWith);
+            if (peer) peer.pairedWith = null; // Unpair the remaining peer
+            node.pairedWith = null;
+        }
+    });
+
     // Disconnect cleanup
     socket.on('disconnect', () => {
         console.log('[-] Client disconnected:', socket.id);
